@@ -1,0 +1,1027 @@
+local Blackwind = {}
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+local CoreGui = game:GetService("CoreGui")
+local TextService = game:GetService("TextService")
+local HttpService = game:GetService("HttpService")
+local LocalPlayer = Players.LocalPlayer
+local Mouse = LocalPlayer:GetMouse()
+Blackwind.Config = {
+    ToggleKey = Enum.KeyCode.RightControl,
+    AccentColor = Color3.fromRGB(0, 140, 255),
+    BackgroundColor = Color3.fromRGB(15, 15, 15),
+    MainColor = Color3.fromRGB(25, 25, 25),
+    SecondaryColor = Color3.fromRGB(35, 35, 35),
+    TextColor = Color3.fromRGB(240, 240, 240),
+    SubTextColor = Color3.fromRGB(180, 180, 180),
+    ShowScreenButton = true,
+    ScreenButtonSize = 45,
+    WindowSize = Vector2.new(500, 450),
+    NotifyDuration = 3,
+    Font = Enum.Font.Gotham,
+    CornerRadius = 6,
+    Version = "2.0.0",
+    AutoShow = true,
+    MinimizeKey = Enum.KeyCode.LeftControl
+}
+Blackwind.Colors = {
+    Red = Color3.fromRGB(220, 70, 70),
+    Green = Color3.fromRGB(70, 220, 70),
+    Warning = Color3.fromRGB(255, 170, 0),
+    Stroke = Color3.fromRGB(45, 45, 45),
+    Gradient = {
+        Color3.fromRGB(0, 140, 255),
+        Color3.fromRGB(0, 100, 220)
+    }
+}
+Blackwind.Windows = {}
+Blackwind.Notifications = {}
+Blackwind.Connections = {}
+Blackwind.ScreenButtons = {}
+local ScreenGui, MainFrame
+local ScreenToggleBtn
+local UIVisible = false
+local Minimized = false
+local OriginalSize = Blackwind.Config.WindowSize
+local function Create(className, props)
+    local obj = Instance.new(className)
+    for prop, val in pairs(props) do
+        if prop == "Parent" then
+            obj.Parent = val
+        else
+            if pcall(function() return obj[prop] end) then
+                obj[prop] = val
+            end
+        end
+    end
+    return obj
+end
+local function Roundify(obj, radius)
+    local corner = Create("UICorner", {
+        CornerRadius = UDim.new(0, radius or Blackwind.Config.CornerRadius),
+        Parent = obj
+    })
+    return corner
+end
+local function AddStroke(obj, color, thickness)
+    local stroke = Create("UIStroke", {
+        Color = color or Blackwind.Colors.Stroke,
+        Thickness = thickness or 1,
+        Parent = obj
+    })
+    return stroke
+end
+local function AddGradient(obj, color1, color2)
+    local gradient = Create("UIGradient", {
+        Color = ColorSequence.new({
+            ColorSequenceKeypoint.new(0, color1 or Blackwind.Colors.Gradient[1]),
+            ColorSequenceKeypoint.new(1, color2 or Blackwind.Colors.Gradient[2])
+        }),
+        Rotation = 90,
+        Parent = obj
+    })
+    return gradient
+end
+local function AddShadow(obj)
+    local shadow = Create("ImageLabel", {
+        BackgroundTransparency = 1,
+        Image = "rbxassetid://1316045217",
+        ImageColor3 = Color3.new(0, 0, 0),
+        ImageTransparency = 0.8,
+        ScaleType = Enum.ScaleType.Slice,
+        SliceCenter = Rect.new(10, 10, 118, 118),
+        Size = UDim2.new(1, 20, 1, 20),
+        Position = UDim2.new(0, -10, 0, -10),
+        Parent = obj.Parent,
+        ZIndex = obj.ZIndex - 1
+    })
+    return shadow
+end
+local function MakeDraggable(frame, dragFrame)
+    local dragging = false
+    local dragInput, dragStart, startPos
+    dragFrame.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = true
+            dragStart = input.Position
+            startPos = frame.Position
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then
+                    dragging = false
+                end
+            end)
+        end
+    end)
+    dragFrame.InputChanged:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseMovement then
+            dragInput = input
+        end
+    end)
+    table.insert(Blackwind.Connections, UserInputService.InputChanged:Connect(function(input)
+        if dragging and input == dragInput then
+            local delta = input.Position - dragStart
+            frame.Position = UDim2.new(
+                startPos.X.Scale,
+                startPos.X.Offset + delta.X,
+                startPos.Y.Scale,
+                startPos.Y.Offset + delta.Y
+            )
+        end
+    end))
+end
+function Blackwind:CreateScreenButton()
+    ScreenToggleBtn = Create("TextButton", {
+        Name = "ScreenToggle",
+        BackgroundColor3 = Blackwind.Config.AccentColor,
+        BackgroundTransparency = 0.1,
+        Size = UDim2.new(0, Blackwind.Config.ScreenButtonSize, 0, Blackwind.Config.ScreenButtonSize),
+        Position = UDim2.new(0.5, -Blackwind.Config.ScreenButtonSize/2, 0, 20),
+        Text = UIVisible and "✕" or "≡",
+        TextColor3 = Blackwind.Config.TextColor,
+        Font = Blackwind.Config.Font,
+        TextSize = 20,
+        BorderSizePixel = 0,
+        ZIndex = 100,
+        Parent = ScreenGui
+    })
+    Roundify(ScreenToggleBtn, 12)
+    AddStroke(ScreenToggleBtn)
+    ScreenToggleBtn.MouseEnter:Connect(function()
+        TweenService:Create(ScreenToggleBtn, TweenInfo.new(0.2), {
+            BackgroundTransparency = 0,
+            TextColor3 = Color3.new(1, 1, 1)
+        }):Play()
+    end)
+    ScreenToggleBtn.MouseLeave:Connect(function()
+        TweenService:Create(ScreenToggleBtn, TweenInfo.new(0.2), {
+            BackgroundTransparency = 0.1,
+            TextColor3 = Blackwind.Config.TextColor
+        }):Play()
+    end)
+    ScreenToggleBtn.MouseButton1Click:Connect(function()
+        Blackwind:ToggleUI()
+    end)
+    MakeDraggable(ScreenToggleBtn, ScreenToggleBtn)
+    Blackwind.ScreenButtons.Toggle = ScreenToggleBtn
+end
+function Blackwind:Notify(options)
+    local title = options.Title or "通知"
+    local content = options.Content or ""
+    local duration = options.Duration or Blackwind.Config.NotifyDuration
+    local notification = Create("Frame", {
+        Name = "Notification",
+        Size = UDim2.new(0, 300, 0, 70),
+        Position = UDim2.new(0.5, -150, 0.1, 0),
+        BackgroundColor3 = Blackwind.Config.MainColor,
+        BackgroundTransparency = 1,
+        BorderSizePixel = 0,
+        ZIndex = 99,
+        Parent = ScreenGui
+    })
+    Roundify(notification, 8)
+    AddStroke(notification)
+    local shadow = AddShadow(notification)
+    local titleLabel = Create("TextLabel", {
+        Size = UDim2.new(1, -20, 0, 25),
+        Position = UDim2.new(0, 15, 0, 10),
+        BackgroundTransparency = 1,
+        Text = title,
+        TextColor3 = Blackwind.Config.TextColor,
+        Font = Blackwind.Config.Font,
+        TextSize = 16,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        Parent = notification
+    })
+    local contentLabel = Create("TextLabel", {
+        Size = UDim2.new(1, -20, 0, 30),
+        Position = UDim2.new(0, 15, 0, 35),
+        BackgroundTransparency = 1,
+        Text = content,
+        TextColor3 = Blackwind.Config.SubTextColor,
+        Font = Blackwind.Config.Font,
+        TextSize = 14,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        TextYAlignment = Enum.TextYAlignment.Top,
+        Parent = notification
+    })
+    TweenService:Create(notification, TweenInfo.new(0.3), {
+        BackgroundTransparency = 0,
+        Position = UDim2.new(0.5, -150, 0.1, 0)
+    }):Play()
+    TweenService:Create(shadow, TweenInfo.new(0.3), {
+        ImageTransparency = 0.5
+    }):Play()
+    task.delay(duration, function()
+        TweenService:Create(notification, TweenInfo.new(0.3), {
+            BackgroundTransparency = 1,
+            Position = UDim2.new(0.5, -150, 0, 0)
+        }):Play()
+        TweenService:Create(shadow, TweenInfo.new(0.3), {
+            ImageTransparency = 1
+        }):Play()
+        task.wait(0.3)
+        notification:Destroy()
+        shadow:Destroy()
+    end)
+    return notification
+end
+function Blackwind:ToggleUI()
+    UIVisible = not UIVisible
+    if MainFrame then
+        if UIVisible then
+            MainFrame.Visible = true
+            TweenService:Create(MainFrame, TweenInfo.new(0.3), {
+                BackgroundTransparency = 0
+            }):Play()
+        else
+            TweenService:Create(MainFrame, TweenInfo.new(0.3), {
+                BackgroundTransparency = 1
+            }):Play()
+            task.wait(0.3)
+            MainFrame.Visible = false
+        end
+        if ScreenToggleBtn then
+            ScreenToggleBtn.Text = UIVisible and "✕" or "≡"
+        end
+    end
+end
+function Blackwind:ToggleMinimize()
+    if not MainFrame then return end
+    Minimized = not Minimized
+    if Minimized then
+        TweenService:Create(MainFrame, TweenInfo.new(0.3), {
+            Size = UDim2.new(0, OriginalSize.X, 0, 40)
+        }):Play()
+        if MainFrame:FindFirstChild("ContentFrame") then
+            MainFrame.ContentFrame.Visible = false
+        end
+        Blackwind:Notify({Title = "UI已最小化", Duration = 2})
+    else
+        TweenService:Create(MainFrame, TweenInfo.new(0.3), {
+            Size = UDim2.new(0, OriginalSize.X, 0, OriginalSize.Y)
+        }):Play()
+        task.wait(0.3)
+        if MainFrame:FindFirstChild("ContentFrame") then
+            MainFrame.ContentFrame.Visible = true
+        end
+        Blackwind:Notify({Title = "UI已恢复", Duration = 2})
+    end
+end
+function Blackwind:CreateWindow(options)
+    options = options or {}
+    ScreenGui = Create("ScreenGui", {
+        Name = "Blackwind_" .. HttpService:GenerateGUID(false),
+        DisplayOrder = 999,
+        ResetOnSpawn = false,
+        Parent = CoreGui
+    })
+    MainFrame = Create("Frame", {
+        Name = "MainFrame",
+        BackgroundColor3 = Blackwind.Config.BackgroundColor,
+        BackgroundTransparency = Blackwind.Config.AutoShow and 0 or 1,
+        Position = UDim2.new(0.5, -OriginalSize.X/2, 0.5, -OriginalSize.Y/2),
+        Size = UDim2.new(0, OriginalSize.X, 0, Blackwind.Config.AutoShow and OriginalSize.Y or 0),
+        Visible = Blackwind.Config.AutoShow,
+        ZIndex = 10,
+        Parent = ScreenGui
+    })
+    Roundify(MainFrame, 10)
+    AddStroke(MainFrame, Blackwind.Colors.Stroke, 2)
+    local windowShadow = AddShadow(MainFrame)
+    local titleBar = Create("Frame", {
+        Name = "TitleBar",
+        BackgroundColor3 = Blackwind.Config.MainColor,
+        Size = UDim2.new(1, 0, 0, 40),
+        Parent = MainFrame
+    })
+    Roundify(titleBar, {TopLeft = true, TopRight = true})
+    local titleLabel = Create("TextLabel", {
+        Name = "Title",
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, -80, 1, 0),
+        Position = UDim2.new(0, 15, 0, 0),
+        Text = options.Title or "Black wind UI",
+        TextColor3 = Blackwind.Config.TextColor,
+        Font = Blackwind.Config.Font,
+        TextSize = 18,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        Parent = titleBar
+    })
+    if options.SubTitle then
+        local subTitleLabel = Create("TextLabel", {
+            Name = "SubTitle",
+            BackgroundTransparency = 1,
+            Size = UDim2.new(1, -80, 0, 20),
+            Position = UDim2.new(0, 15, 0, 20),
+            Text = options.SubTitle,
+            TextColor3 = Blackwind.Config.SubTextColor,
+            Font = Blackwind.Config.Font,
+            TextSize = 12,
+            TextXAlignment = Enum.TextXAlignment.Left,
+            Parent = titleBar
+        })
+    end
+    local buttonContainer = Create("Frame", {
+        BackgroundTransparency = 1,
+        Size = UDim2.new(0, 60, 1, 0),
+        Position = UDim2.new(1, -70, 0, 0),
+        Parent = titleBar
+    })
+    local minimizeBtn = Create("TextButton", {
+        Name = "Minimize",
+        BackgroundTransparency = 1,
+        Size = UDim2.new(0, 25, 0, 25),
+        Position = UDim2.new(0, 0, 0.5, -12.5),
+        Text = "─",
+        TextColor3 = Blackwind.Config.SubTextColor,
+        Font = Enum.Font.GothamBold,
+        TextSize = 16,
+        Parent = buttonContainer
+    })
+    local closeBtn = Create("TextButton", {
+        Name = "Close",
+        BackgroundTransparency = 1,
+        Size = UDim2.new(0, 25, 0, 25),
+        Position = UDim2.new(1, -25, 0.5, -12.5),
+        Text = "✕",
+        TextColor3 = Blackwind.Config.SubTextColor,
+        Font = Enum.Font.Gotham,
+        TextSize = 16,
+        Parent = buttonContainer
+    })
+    local contentFrame = Create("Frame", {
+        Name = "ContentFrame",
+        BackgroundTransparency = 1,
+        Size = UDim2.new(1, -20, 1, -60),
+        Position = UDim2.new(0, 10, 0, 50),
+        Parent = MainFrame
+    })
+    local tabContainer = Create("Frame", {
+        Name = "TabContainer",
+        BackgroundColor3 = Blackwind.Config.SecondaryColor,
+        Size = UDim2.new(1, -20, 0, 35),
+        Position = UDim2.new(0, 10, 0, 50),
+        Parent = MainFrame
+    })
+    Roundify(tabContainer, 6)
+    AddStroke(tabContainer)
+    MakeDraggable(MainFrame, titleBar)
+    minimizeBtn.MouseEnter:Connect(function()
+        TweenService:Create(minimizeBtn, TweenInfo.new(0.2), {
+            TextColor3 = Blackwind.Config.AccentColor
+        }):Play()
+    end)
+    minimizeBtn.MouseLeave:Connect(function()
+        TweenService:Create(minimizeBtn, TweenInfo.new(0.2), {
+            TextColor3 = Blackwind.Config.SubTextColor
+        }):Play()
+    end)
+    closeBtn.MouseEnter:Connect(function()
+        TweenService:Create(closeBtn, TweenInfo.new(0.2), {
+            TextColor3 = Blackwind.Colors.Red
+        }):Play()
+    end)
+    closeBtn.MouseLeave:Connect(function()
+        TweenService:Create(closeBtn, TweenInfo.new(0.2), {
+            TextColor3 = Blackwind.Config.SubTextColor
+        }):Play()
+    end)
+    minimizeBtn.MouseButton1Click:Connect(function()
+        Blackwind:ToggleMinimize()
+    end)
+    closeBtn.MouseButton1Click:Connect(function()
+        Blackwind:ToggleUI()
+    end)
+    table.insert(Blackwind.Connections, UserInputService.InputBegan:Connect(function(input)
+        if input.KeyCode == Blackwind.Config.ToggleKey then
+            Blackwind:ToggleUI()
+        elseif input.KeyCode == Blackwind.Config.MinimizeKey then
+            Blackwind:ToggleMinimize()
+        end
+    end))
+    if Blackwind.Config.ShowScreenButton then
+        Blackwind:CreateScreenButton()
+    end
+    local Window = {
+        MainFrame = MainFrame,
+        ContentFrame = contentFrame,
+        TabContainer = tabContainer,
+        TitleLabel = titleLabel,
+        Tabs = {},
+        Sections = {}
+    }
+    function Window:CreateTab(name)
+        local tabId = #self.Tabs + 1
+        local tabButton = Create("TextButton", {
+            Name = name .. "Tab",
+            BackgroundColor3 = tabId == 1 and Blackwind.Config.AccentColor or Blackwind.Config.SecondaryColor,
+            BackgroundTransparency = tabId == 1 and 0 or 0,
+            Size = UDim2.new(0, 100, 1, -4),
+            Position = UDim2.new(0, (#self.Tabs * 105) + 5, 0, 2),
+            Text = name,
+            TextColor3 = tabId == 1 and Color3.new(1,1,1) or Blackwind.Config.SubTextColor,
+            Font = Blackwind.Config.Font,
+            TextSize = 14,
+            Parent = self.TabContainer
+        })
+        Roundify(tabButton, 4)
+        local tabContent = Create("ScrollingFrame", {
+            Name = name .. "Content",
+            BackgroundTransparency = 1,
+            Size = UDim2.new(1, 0, 1, 0),
+            ScrollBarThickness = 6,
+            ScrollBarImageColor3 = Blackwind.Config.AccentColor,
+            ScrollBarImageTransparency = 0.5,
+            Visible = tabId == 1,
+            Parent = self.ContentFrame
+        })
+        local uiListLayout = Create("UIListLayout", {
+            Padding = UDim.new(0, 10),
+            SortOrder = Enum.SortOrder.LayoutOrder,
+            Parent = tabContent
+        })
+        uiListLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+            tabContent.CanvasSize = UDim2.new(0, 0, 0, uiListLayout.AbsoluteContentSize.Y + 20)
+        end)
+        tabButton.MouseButton1Click:Connect(function()
+            for _, otherTab in pairs(self.Tabs) do
+                if otherTab.Content then
+                    otherTab.Content.Visible = false
+                end
+                if otherTab.Button then
+                    TweenService:Create(otherTab.Button, TweenInfo.new(0.2), {
+                        BackgroundColor3 = Blackwind.Config.SecondaryColor,
+                        TextColor3 = Blackwind.Config.SubTextColor
+                    }):Play()
+                end
+            end
+            tabContent.Visible = true
+            TweenService:Create(tabButton, TweenInfo.new(0.2), {
+                BackgroundColor3 = Blackwind.Config.AccentColor,
+                TextColor3 = Color3.new(1,1,1)
+            }):Play()
+        end)
+        local Tab = {
+            Name = name,
+            Button = tabButton,
+            Content = tabContent,
+            Sections = {}
+        }
+        function Tab:CreateSection(name, collapsible)
+            local sectionId = #self.Sections + 1
+            local sectionFrame = Create("Frame", {
+                Name = name .. "Section",
+                BackgroundColor3 = Blackwind.Config.MainColor,
+                BackgroundTransparency = 0.05,
+                Size = UDim2.new(1, -10, 0, 40),
+                LayoutOrder = sectionId,
+                Parent = self.Content
+            })
+            Roundify(sectionFrame, 6)
+            AddStroke(sectionFrame)
+            local sectionLabel = Create("TextLabel", {
+                Name = "SectionLabel",
+                BackgroundTransparency = 1,
+                Size = UDim2.new(1, -20, 0, 20),
+                Position = UDim2.new(0, 10, 0, 10),
+                Text = name,
+                TextColor3 = Blackwind.Config.TextColor,
+                Font = Blackwind.Config.Font,
+                TextSize = 16,
+                TextXAlignment = Enum.TextXAlignment.Left,
+                Parent = sectionFrame
+            })
+            local elementContainer = Create("Frame", {
+                Name = "ElementContainer",
+                BackgroundTransparency = 1,
+                Size = UDim2.new(1, -20, 1, -40),
+                Position = UDim2.new(0, 10, 0, 40),
+                Parent = sectionFrame
+            })
+            local elementList = Create("UIListLayout", {
+                Padding = UDim.new(0, 8),
+                SortOrder = Enum.SortOrder.LayoutOrder,
+                Parent = elementContainer
+            })
+            local Section = {
+                Frame = sectionFrame,
+                Container = elementContainer,
+                Elements = {}
+            }
+            if collapsible then
+                local collapseBtn = Create("TextButton", {
+                    Name = "CollapseBtn",
+                    BackgroundTransparency = 1,
+                    Size = UDim2.new(0, 20, 0, 20),
+                    Position = UDim2.new(1, -30, 0, 10),
+                    Text = "▼",
+                    TextColor3 = Blackwind.Config.SubTextColor,
+                    Font = Blackwind.Config.Font,
+                    TextSize = 12,
+                    Parent = sectionFrame
+                })
+                local isCollapsed = false
+                collapseBtn.MouseButton1Click:Connect(function()
+                    isCollapsed = not isCollapsed
+                    if isCollapsed then
+                        TweenService:Create(sectionFrame, TweenInfo.new(0.3), {
+                            Size = UDim2.new(1, -10, 0, 40)
+                        }):Play()
+                        elementContainer.Visible = false
+                        collapseBtn.Text = "▶"
+                    else
+                        TweenService:Create(sectionFrame, TweenInfo.new(0.3), {
+                            Size = UDim2.new(1, -10, 0, 40 + elementList.AbsoluteContentSize.Y)
+                        }):Play()
+                        elementContainer.Visible = true
+                        collapseBtn.Text = "▼"
+                    end
+                end)
+            end
+            function Section:CreateLabel(text)
+                local label = Create("TextLabel", {
+                    BackgroundTransparency = 1,
+                    Size = UDim2.new(1, 0, 0, 20),
+                    Text = text,
+                    TextColor3 = Blackwind.Config.SubTextColor,
+                    Font = Blackwind.Config.Font,
+                    TextSize = 14,
+                    TextXAlignment = Enum.TextXAlignment.Left,
+                    LayoutOrder = #self.Elements + 1,
+                    Parent = self.Container
+                })
+                table.insert(self.Elements, label)
+                task.wait()
+                sectionFrame.Size = UDim2.new(1, -10, 0, 40 + elementList.AbsoluteContentSize.Y)
+                return label
+            end
+            function Section:CreateToggle(text, default, callback)
+                local toggleId = #self.Elements + 1
+                local toggleFrame = Create("Frame", {
+                    BackgroundTransparency = 1,
+                    Size = UDim2.new(1, 0, 0, 25),
+                    LayoutOrder = toggleId,
+                    Parent = self.Container
+                })
+                local toggleName = Create("TextLabel", {
+                    Size = UDim2.new(0.7, 0, 1, 0),
+                    BackgroundTransparency = 1,
+                    Text = text,
+                    TextColor3 = Blackwind.Config.TextColor,
+                    Font = Blackwind.Config.Font,
+                    TextSize = 14,
+                    TextXAlignment = Enum.TextXAlignment.Left,
+                    Parent = toggleFrame
+                })
+                local toggleButton = Create("TextButton", {
+                    Name = "Toggle",
+                    Size = UDim2.new(0, 40, 0, 20),
+                    Position = UDim2.new(1, -45, 0.5, -10),
+                    BackgroundColor3 = default and Blackwind.Config.AccentColor or Blackwind.Config.SecondaryColor,
+                    Text = "",
+                    Parent = toggleFrame
+                })
+                Roundify(toggleButton, 10)
+                local toggleCircle = Create("Frame", {
+                    Size = UDim2.new(0, 16, 0, 16),
+                    Position = default and UDim2.new(1, -18, 0.5, -8) or UDim2.new(0, 2, 0.5, -8),
+                    BackgroundColor3 = Color3.new(1, 1, 1),
+                    Parent = toggleButton
+                })
+                Roundify(toggleCircle, 8)
+                local isToggled = default
+                local function updateToggle()
+                    if isToggled then
+                        TweenService:Create(toggleButton, TweenInfo.new(0.2), {
+                            BackgroundColor3 = Blackwind.Config.AccentColor
+                        }):Play()
+                        TweenService:Create(toggleCircle, TweenInfo.new(0.2), {
+                            Position = UDim2.new(1, -18, 0.5, -8)
+                        }):Play()
+                    else
+                        TweenService:Create(toggleButton, TweenInfo.new(0.2), {
+                            BackgroundColor3 = Blackwind.Config.SecondaryColor
+                        }):Play()
+                        TweenService:Create(toggleCircle, TweenInfo.new(0.2), {
+                            Position = UDim2.new(0, 2, 0.5, -8)
+                        }):Play()
+                    end
+                end
+                toggleButton.MouseButton1Click:Connect(function()
+                    isToggled = not isToggled
+                    updateToggle()
+                    if callback then
+                        callback(isToggled)
+                    end
+                end)
+                toggleButton.MouseEnter:Connect(function()
+                    TweenService:Create(toggleButton, TweenInfo.new(0.2), {
+                        BackgroundTransparency = 0
+                    }):Play()
+                end)
+                toggleButton.MouseLeave:Connect(function()
+                    TweenService:Create(toggleButton, TweenInfo.new(0.2), {
+                        BackgroundTransparency = 0.1
+                    }):Play()
+                end)
+                local Toggle = {
+                    Set = function(value)
+                        isToggled = value
+                        updateToggle()
+                        if callback then
+                            callback(isToggled)
+                        end
+                    end,
+                    Get = function()
+                        return isToggled
+                    end
+                }
+                table.insert(self.Elements, toggleFrame)
+                task.wait()
+                sectionFrame.Size = UDim2.new(1, -10, 0, 40 + elementList.AbsoluteContentSize.Y)
+                return Toggle
+            end
+            function Section:CreateButton(text, callback)
+                local buttonId = #self.Elements + 1
+                local buttonFrame = Create("Frame", {
+                    BackgroundTransparency = 1,
+                    Size = UDim2.new(1, 0, 0, 35),
+                    LayoutOrder = buttonId,
+                    Parent = self.Container
+                })
+                local button = Create("TextButton", {
+                    Size = UDim2.new(1, 0, 1, 0),
+                    BackgroundColor3 = Blackwind.Config.AccentColor,
+                    BackgroundTransparency = 0.1,
+                    Text = text,
+                    TextColor3 = Blackwind.Config.TextColor,
+                    Font = Blackwind.Config.Font,
+                    TextSize = 14,
+                    Parent = buttonFrame
+                })
+                Roundify(button, 6)
+                button.MouseButton1Click:Connect(function()
+                    if callback then
+                        callback()
+                    end
+                end)
+                button.MouseEnter:Connect(function()
+                    TweenService:Create(button, TweenInfo.new(0.2), {
+                        BackgroundTransparency = 0
+                    }):Play()
+                end)
+                button.MouseLeave:Connect(function()
+                    TweenService:Create(button, TweenInfo.new(0.2), {
+                        BackgroundTransparency = 0.1
+                    }):Play()
+                end)
+                local Button = {
+                    SetText = function(newText)
+                        button.Text = newText
+                    end
+                }
+                table.insert(self.Elements, buttonFrame)
+                task.wait()
+                sectionFrame.Size = UDim2.new(1, -10, 0, 40 + elementList.AbsoluteContentSize.Y)
+                return Button
+            end
+            function Section:CreateSlider(text, min, max, default, callback)
+                local sliderId = #self.Elements + 1
+                local sliderFrame = Create("Frame", {
+                    BackgroundTransparency = 1,
+                    Size = UDim2.new(1, 0, 0, 60),
+                    LayoutOrder = sliderId,
+                    Parent = self.Container
+                })
+                local sliderName = Create("TextLabel", {
+                    BackgroundTransparency = 1,
+                    Size = UDim2.new(1, 0, 0, 20),
+                    Text = text,
+                    TextColor3 = Blackwind.Config.TextColor,
+                    Font = Blackwind.Config.Font,
+                    TextSize = 14,
+                    TextXAlignment = Enum.TextXAlignment.Left,
+                    Parent = sliderFrame
+                })
+                local valueLabel = Create("TextLabel", {
+                    BackgroundTransparency = 1,
+                    Size = UDim2.new(0, 60, 0, 20),
+                    Position = UDim2.new(1, -60, 0, 0),
+                    Text = tostring(default or min),
+                    TextColor3 = Blackwind.Config.SubTextColor,
+                    Font = Blackwind.Config.Font,
+                    TextSize = 14,
+                    TextXAlignment = Enum.TextXAlignment.Right,
+                    Parent = sliderFrame
+                })
+                local sliderTrack = Create("Frame", {
+                    Size = UDim2.new(1, 0, 0, 6),
+                    Position = UDim2.new(0, 0, 0, 35),
+                    BackgroundColor3 = Blackwind.Config.SecondaryColor,
+                    Parent = sliderFrame
+                })
+                Roundify(sliderTrack, 3)
+                local sliderFill = Create("Frame", {
+                    Size = UDim2.new(0, 0, 1, 0),
+                    BackgroundColor3 = Blackwind.Config.AccentColor,
+                    Parent = sliderTrack
+                })
+                Roundify(sliderFill, 3)
+                local sliderButton = Create("TextButton", {
+                    Size = UDim2.new(0, 16, 0, 16),
+                    Position = UDim2.new(0, -8, 0.5, -8),
+                    BackgroundColor3 = Color3.new(1, 1, 1),
+                    Text = "",
+                    Parent = sliderTrack
+                })
+                Roundify(sliderButton, 8)
+                local currentValue = default or min
+                local isDragging = false
+                local function updateSlider(value)
+                    currentValue = math.clamp(value, min, max)
+                    local percentage = (currentValue - min) / (max - min)
+                    TweenService:Create(sliderFill, TweenInfo.new(0.1), {
+                        Size = UDim2.new(percentage, 0, 1, 0)
+                    }):Play()
+                    TweenService:Create(sliderButton, TweenInfo.new(0.1), {
+                        Position = UDim2.new(percentage, -8, 0.5, -8)
+                    }):Play()
+                    valueLabel.Text = string.format("%.1f", currentValue)
+                    if callback then
+                        callback(currentValue)
+                    end
+                end
+                updateSlider(currentValue)
+                local function updateFromMouse()
+                    if not isDragging then return end
+                    local mousePos = UserInputService:GetMouseLocation()
+                    local trackPos = sliderTrack.AbsolutePosition
+                    local trackSize = sliderTrack.AbsoluteSize
+                    local relativeX = math.clamp((mousePos.X - trackPos.X) / trackSize.X, 0, 1)
+                    local value = min + (relativeX * (max - min))
+                    updateSlider(value)
+                end
+                sliderButton.InputBegan:Connect(function(input)
+                    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                        isDragging = true
+                    end
+                end)
+                sliderTrack.InputBegan:Connect(function(input)
+                    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                        isDragging = true
+                        updateFromMouse()
+                    end
+                end)
+                table.insert(Blackwind.Connections, UserInputService.InputChanged:Connect(function(input)
+                    if isDragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+                        updateFromMouse()
+                    end
+                end))
+                table.insert(Blackwind.Connections, UserInputService.InputEnded:Connect(function(input)
+                    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                        isDragging = false
+                    end
+                end))
+                local Slider = {
+                    Set = function(value)
+                        updateSlider(value)
+                    end,
+                    Get = function()
+                        return currentValue
+                    end
+                }
+                table.insert(self.Elements, sliderFrame)
+                task.wait()
+                sectionFrame.Size = UDim2.new(1, -10, 0, 40 + elementList.AbsoluteContentSize.Y)
+                return Slider
+            end
+            function Section:CreateDropdown(text, options, default, callback)
+                local dropdownId = #self.Elements + 1
+                local dropdownFrame = Create("Frame", {
+                    BackgroundTransparency = 1,
+                    Size = UDim2.new(1, 0, 0, 35),
+                    LayoutOrder = dropdownId,
+                    Parent = self.Container
+                })
+                local dropdownName = Create("TextLabel", {
+                    BackgroundTransparency = 1,
+                    Size = UDim2.new(0.6, 0, 1, 0),
+                    Text = text,
+                    TextColor3 = Blackwind.Config.TextColor,
+                    Font = Blackwind.Config.Font,
+                    TextSize = 14,
+                    TextXAlignment = Enum.TextXAlignment.Left,
+                    Parent = dropdownFrame
+                })
+                local dropdownButton = Create("TextButton", {
+                    Size = UDim2.new(0.4, 0, 1, 0),
+                    Position = UDim2.new(0.6, 0, 0, 0),
+                    BackgroundColor3 = Blackwind.Config.SecondaryColor,
+                    Text = default or "选择...",
+                    TextColor3 = Blackwind.Config.SubTextColor,
+                    Font = Blackwind.Config.Font,
+                    TextSize = 14,
+                    Parent = dropdownFrame
+                })
+                Roundify(dropdownButton, 4)
+                local dropdownList = Create("Frame", {
+                    Name = "DropdownList",
+                    BackgroundColor3 = Blackwind.Config.MainColor,
+                    Size = UDim2.new(1, 0, 0, 0),
+                    Position = UDim2.new(0, 0, 1, 5),
+                    Visible = false,
+                    Parent = dropdownFrame
+                })
+                Roundify(dropdownList, 4)
+                AddStroke(dropdownList)
+                AddShadow(dropdownList)
+                local listLayout = Create("UIListLayout", {
+                    SortOrder = Enum.SortOrder.LayoutOrder,
+                    Parent = dropdownList
+                })
+                local isOpen = false
+                local selected = default
+                local function toggleDropdown()
+                    isOpen = not isOpen
+                    dropdownList.Visible = isOpen
+                    if isOpen then
+                        TweenService:Create(dropdownList, TweenInfo.new(0.2), {
+                            Size = UDim2.new(1, 0, 0, #options * 30)
+                        }):Play()
+                    else
+                        TweenService:Create(dropdownList, TweenInfo.new(0.2), {
+                            Size = UDim2.new(1, 0, 0, 0)
+                        }):Play()
+                    end
+                end
+                dropdownButton.MouseButton1Click:Connect(toggleDropdown)
+                for i, option in pairs(options) do
+                    local optionButton = Create("TextButton", {
+                        Size = UDim2.new(1, 0, 0, 30),
+                        BackgroundColor3 = Blackwind.Config.MainColor,
+                        Text = option,
+                        TextColor3 = Blackwind.Config.SubTextColor,
+                        Font = Blackwind.Config.Font,
+                        TextSize = 14,
+                        LayoutOrder = i,
+                        Parent = dropdownList
+                    })
+                    optionButton.MouseEnter:Connect(function()
+                        TweenService:Create(optionButton, TweenInfo.new(0.2), {
+                            BackgroundColor3 = Blackwind.Config.SecondaryColor,
+                            TextColor3 = Blackwind.Config.TextColor
+                        }):Play()
+                    end)
+                    optionButton.MouseLeave:Connect(function()
+                        TweenService:Create(optionButton, TweenInfo.new(0.2), {
+                            BackgroundColor3 = Blackwind.Config.MainColor,
+                            TextColor3 = Blackwind.Config.SubTextColor
+                        }):Play()
+                    end)
+                    optionButton.MouseButton1Click:Connect(function()
+                        selected = option
+                        dropdownButton.Text = option
+                        toggleDropdown()
+                        if callback then
+                            callback(option)
+                        end
+                    end)
+                end
+                local Dropdown = {
+                    Set = function(value)
+                        selected = value
+                        dropdownButton.Text = value
+                        if callback then
+                            callback(value)
+                        end
+                    end,
+                    Get = function()
+                        return selected
+                    end
+                }
+                table.insert(self.Elements, dropdownFrame)
+                task.wait()
+                sectionFrame.Size = UDim2.new(1, -10, 0, 40 + elementList.AbsoluteContentSize.Y)
+                return Dropdown
+            end
+            function Section:CreateInput(text, placeholder, default, callback)
+                local inputId = #self.Elements + 1
+                local inputFrame = Create("Frame", {
+                    BackgroundTransparency = 1,
+                    Size = UDim2.new(1, 0, 0, 40),
+                    LayoutOrder = inputId,
+                    Parent = self.Container
+                })
+                local inputName = Create("TextLabel", {
+                    BackgroundTransparency = 1,
+                    Size = UDim2.new(0.5, 0, 0, 20),
+                    Text = text,
+                    TextColor3 = Blackwind.Config.TextColor,
+                    Font = Blackwind.Config.Font,
+                    TextSize = 14,
+                    TextXAlignment = Enum.TextXAlignment.Left,
+                    Parent = inputFrame
+                })
+                local textBox = Create("TextBox", {
+                    Size = UDim2.new(0.5, 0, 0, 30),
+                    Position = UDim2.new(0.5, 0, 0, 5),
+                    BackgroundColor3 = Blackwind.Config.SecondaryColor,
+                    Text = default or "",
+                    PlaceholderText = placeholder or "输入文本...",
+                    TextColor3 = Blackwind.Config.TextColor,
+                    PlaceholderColor3 = Blackwind.Config.SubTextColor,
+                    Font = Blackwind.Config.Font,
+                    TextSize = 14,
+                    Parent = inputFrame
+                })
+                Roundify(textBox, 4)
+                textBox.Focused:Connect(function()
+                    TweenService:Create(textBox, TweenInfo.new(0.2), {
+                        BackgroundColor3 = Blackwind.Config.MainColor
+                    }):Play()
+                end)
+                textBox.FocusLost:Connect(function()
+                    TweenService:Create(textBox, TweenInfo.new(0.2), {
+                        BackgroundColor3 = Blackwind.Config.SecondaryColor
+                    }):Play()
+                    if callback then
+                        callback(textBox.Text)
+                    end
+                end)
+                local Input = {
+                    Set = function(value)
+                        textBox.Text = value
+                    end,
+                    Get = function()
+                        return textBox.Text
+                    end
+                }
+                table.insert(self.Elements, inputFrame)
+                task.wait()
+                sectionFrame.Size = UDim2.new(1, -10, 0, 40 + elementList.AbsoluteContentSize.Y)
+                return Input
+            end
+            self.Sections[#self.Sections + 1] = Section
+            return Section
+        end
+        self.Tabs[#self.Tabs + 1] = Tab
+        return Tab
+    end
+    function Window:Toggle(visible)
+        if visible ~= nil then
+            UIVisible = visible
+            if MainFrame then
+                MainFrame.Visible = visible
+                TweenService:Create(MainFrame, TweenInfo.new(0.3), {
+                    BackgroundTransparency = visible and 0 or 1
+                }):Play()
+            end
+            if ScreenToggleBtn then
+                ScreenToggleBtn.Text = visible and "✕" or "≡"
+            end
+        else
+            Blackwind:ToggleUI()
+        end
+    end
+    function Window:Destroy()
+        if ScreenGui then
+            ScreenGui:Destroy()
+        end
+        for _, conn in pairs(Blackwind.Connections) do
+            if conn and typeof(conn) == "RBXScriptConnection" then
+                pcall(function() conn:Disconnect() end)
+            end
+        end
+    end
+    table.insert(Blackwind.Windows, Window)
+    task.wait(0.5)
+    Blackwind:Notify({
+        Title = "Black wind UI v" .. Blackwind.Config.Version,
+        Content = "按右Ctrl切换界面，左Ctrl最小化",
+        Duration = 5
+    })
+    return Window
+end
+function Blackwind:Unload()
+    for _, Window in pairs(Blackwind.Windows) do
+        Window:Destroy()
+    end
+    Blackwind.Windows = {}
+    for _, conn in pairs(Blackwind.Connections) do
+        if conn and typeof(conn) == "RBXScriptConnection" then
+            pcall(function() conn:Disconnect() end)
+        end
+    end
+    Blackwind.Connections = {}
+    warn("Black wind UI 已卸载")
+end
+function Blackwind:UpdateConfig(config)
+    for key, value in pairs(config) do
+        if Blackwind.Config[key] ~= nil then
+            Blackwind.Config[key] = value
+        end
+    end
+end
+return Blackwind
