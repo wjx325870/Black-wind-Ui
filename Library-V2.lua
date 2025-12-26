@@ -48,6 +48,7 @@ Pulse.LucideIcons = {}
 Pulse.Tooltips = {}
 Pulse.CurrentTutorial = nil
 
+-- 完整Lucide图标库
 Pulse.LucideIcons.Map = {
     home = 10709777533,
     settings = 10709779000,
@@ -334,8 +335,10 @@ function Pulse:CreateTooltip(parent, options)
     
     tooltip.Visible = false
     
+    local connection1, connection2
+    
     if parent then
-        parent.MouseEnter:Connect(function()
+        connection1 = parent.MouseEnter:Connect(function()
             local mouse = UserInputService:GetMouseLocation()
             tooltip.Position = UDim2.new(0, mouse.X + 10, 0, mouse.Y + 10)
             tooltip.Visible = true
@@ -345,7 +348,7 @@ function Pulse:CreateTooltip(parent, options)
             }):Play()
         end)
         
-        parent.MouseLeave:Connect(function()
+        connection2 = parent.MouseLeave:Connect(function()
             TweenService:Create(tooltip, TweenInfo.new(0.2), {
                 BackgroundTransparency = 1
             }):Play()
@@ -353,6 +356,9 @@ function Pulse:CreateTooltip(parent, options)
             task.wait(0.2)
             tooltip.Visible = false
         end)
+        
+        table.insert(Pulse.Connections, connection1)
+        table.insert(Pulse.Connections, connection2)
     end
     
     local tooltipObj = {
@@ -456,6 +462,8 @@ function Pulse:PulseNotify(options)
         stroke.Transparency = 0.2 - pulse
     end)
     
+    table.insert(Pulse.Connections, pulseConnection)
+    
     task.delay(duration, function()
         pulseConnection:Disconnect()
         if glowConn then glowConn:Disconnect() end
@@ -481,6 +489,357 @@ function Pulse:PulseNotify(options)
     
     table.insert(Pulse.Notifications, notification)
     return notification
+end
+
+-- 修复的HSV转RGB函数
+local function hsvToRgb(h, s, v)
+    local r, g, b
+    
+    local i = math.floor(h * 6)
+    local f = h * 6 - i
+    local p = v * (1 - s)
+    local q = v * (1 - f * s)
+    local t = v * (1 - (1 - f) * s)
+    
+    i = i % 6
+    
+    if i == 0 then r, g, b = v, t, p
+    elseif i == 1 then r, g, b = q, v, p
+    elseif i == 2 then r, g, b = p, v, t
+    elseif i == 3 then r, g, b = p, q, v
+    elseif i == 4 then r, g, b = t, p, v
+    elseif i == 5 then r, g, b = v, p, q end
+    
+    return Color3.fromRGB(math.floor(r * 255), math.floor(g * 255), math.floor(b * 255))
+end
+
+function Pulse:CreateButton(parent, options)
+    options = options or {}
+    
+    local buttonFrame = Create("TextButton", {
+        Name = options.Name or "PulseButton",
+        Size = options.Size or UDim2.new(0, 150, 0, 40),
+        Position = options.Position or UDim2.new(0, 0, 0, 0),
+        BackgroundColor3 = Pulse.Config.AccentColor,
+        BackgroundTransparency = 0.2,
+        Text = options.Text or "Button",
+        TextColor3 = Color3.new(1, 1, 1),
+        Font = Enum.Font.GothamBold,
+        TextSize = 14,
+        AutoButtonColor = false,
+        Parent = parent
+    })
+    
+    Roundify(buttonFrame, 8)
+    AddStroke(buttonFrame, Pulse.Config.AccentColor, 1.5)
+    
+    if options.Icon then
+        buttonFrame.Text = "   " .. buttonFrame.Text
+        local icon = Create("ImageLabel", {
+            Size = UDim2.new(0, 20, 0, 20),
+            Position = UDim2.new(0, 10, 0.5, -10),
+            BackgroundTransparency = 1,
+            Image = Pulse:GetLucideIcon(options.Icon) or "rbxassetid://10723392055",
+            ImageColor3 = Color3.new(1, 1, 1),
+            Parent = buttonFrame
+        })
+    end
+    
+    local indicator = CreatePulseIndicator(buttonFrame, UDim2.new(0.5, 0, 1, -2))
+    
+    local clickEffect = Create("Frame", {
+        Name = "ClickEffect",
+        Size = UDim2.new(0, 0, 0, 0),
+        Position = UDim2.new(0.5, 0, 0.5, 0),
+        BackgroundColor3 = Color3.new(1, 1, 1),
+        BackgroundTransparency = 0.8,
+        ZIndex = -1,
+        Parent = buttonFrame
+    })
+    Roundify(clickEffect, 100)
+    
+    buttonFrame.MouseEnter:Connect(function()
+        TweenService:Create(buttonFrame, TweenInfo.new(0.2), {
+            BackgroundTransparency = 0.1,
+            Size = (options.Size or UDim2.new(0, 150, 0, 40)) + UDim2.new(0, 4, 0, 4)
+        }):Play()
+    end)
+    
+    buttonFrame.MouseLeave:Connect(function()
+        TweenService:Create(buttonFrame, TweenInfo.new(0.2), {
+            BackgroundTransparency = 0.2,
+            Size = options.Size or UDim2.new(0, 150, 0, 40)
+        }):Play()
+    end)
+    
+    buttonFrame.MouseButton1Down:Connect(function()
+        PlayPulseAnimation(indicator)
+        
+        clickEffect.Size = UDim2.new(0, 0, 0, 0)
+        clickEffect.Position = UDim2.new(0.5, 0, 0.5, 0)
+        clickEffect.BackgroundTransparency = 0.8
+        
+        TweenService:Create(clickEffect, TweenInfo.new(0.3), {
+            Size = UDim2.new(1, 0, 1, 0),
+            BackgroundTransparency = 1
+        }):Play()
+        
+        TweenService:Create(buttonFrame, TweenInfo.new(0.1), {
+            BackgroundTransparency = 0.3
+        }):Play()
+    end)
+    
+    buttonFrame.MouseButton1Up:Connect(function()
+        TweenService:Create(buttonFrame, TweenInfo.new(0.2), {
+            BackgroundTransparency = 0.2
+        }):Play()
+        
+        if options.OnClick then
+            options.OnClick()
+        end
+    end)
+    
+    local buttonObj = {
+        Frame = buttonFrame,
+        SetText = function(text)
+            buttonFrame.Text = text
+        end,
+        SetColor = function(color)
+            buttonFrame.BackgroundColor3 = color
+        end
+    }
+    
+    return buttonObj
+end
+
+function Pulse:CreateToggle(parent, options)
+    options = options or {}
+    
+    local toggleFrame = Create("Frame", {
+        Name = options.Name or "PulseToggle",
+        Size = options.Size or UDim2.new(0, 120, 0, 40),
+        Position = options.Position or UDim2.new(0, 0, 0, 0),
+        BackgroundTransparency = 1,
+        Parent = parent
+    })
+    
+    local label = Create("TextLabel", {
+        Name = "Label",
+        Size = UDim2.new(0.6, 0, 1, 0),
+        Position = UDim2.new(0, 0, 0, 0),
+        BackgroundTransparency = 1,
+        Text = options.Label or "Toggle",
+        TextColor3 = Pulse.Config.TextColor,
+        Font = Enum.Font.GothamMedium,
+        TextSize = 14,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        Parent = toggleFrame
+    })
+    
+    local toggleButton = Create("Frame", {
+        Name = "ToggleButton",
+        Size = UDim2.new(0, 50, 0, 25),
+        Position = UDim2.new(1, -50, 0.5, -12.5),
+        BackgroundColor3 = Pulse.Config.SecondaryColor,
+        Parent = toggleFrame
+    })
+    
+    Roundify(toggleButton, 12.5)
+    AddStroke(toggleButton, Pulse.Colors.Stroke, 1)
+    
+    local toggleKnob = Create("Frame", {
+        Name = "ToggleKnob",
+        Size = UDim2.new(0, 21, 0, 21),
+        Position = UDim2.new(0, 2, 0.5, -10.5),
+        BackgroundColor3 = Color3.new(1, 1, 1),
+        Parent = toggleButton
+    })
+    
+    Roundify(toggleKnob, 10.5)
+    
+    local indicator = CreatePulseIndicator(toggleButton, UDim2.new(0.5, 0, 1, -1))
+    
+    local isToggled = options.Default or false
+    
+    local function updateToggle()
+        if isToggled then
+            TweenService:Create(toggleButton, TweenInfo.new(0.2), {
+                BackgroundColor3 = Pulse.Config.AccentColor
+            }):Play()
+            
+            TweenService:Create(toggleKnob, TweenInfo.new(0.2), {
+                Position = UDim2.new(1, -23, 0.5, -10.5)
+            }):Play()
+        else
+            TweenService:Create(toggleButton, TweenInfo.new(0.2), {
+                BackgroundColor3 = Pulse.Config.SecondaryColor
+            }):Play()
+            
+            TweenService:Create(toggleKnob, TweenInfo.new(0.2), {
+                Position = UDim2.new(0, 2, 0.5, -10.5)
+            }):Play()
+        end
+    end
+    
+    toggleButton.MouseButton1Click:Connect(function()
+        PlayPulseAnimation(indicator)
+        isToggled = not isToggled
+        updateToggle()
+        
+        if options.OnToggle then
+            options.OnToggle(isToggled)
+        end
+    end)
+    
+    updateToggle()
+    
+    local toggleObj = {
+        Frame = toggleFrame,
+        IsToggled = isToggled,
+        SetState = function(state)
+            isToggled = state
+            updateToggle()
+        end,
+        Toggle = function()
+            isToggled = not isToggled
+            updateToggle()
+        end
+    }
+    
+    return toggleObj
+end
+
+function Pulse:CreateSlider(parent, options)
+    options = options or {}
+    
+    local sliderFrame = Create("Frame", {
+        Name = options.Name or "PulseSlider",
+        Size = options.Size or UDim2.new(0, 200, 0, 50),
+        Position = options.Position or UDim2.new(0, 0, 0, 0),
+        BackgroundTransparency = 1,
+        Parent = parent
+    })
+    
+    local label = Create("TextLabel", {
+        Name = "Label",
+        Size = UDim2.new(1, 0, 0, 20),
+        Position = UDim2.new(0, 0, 0, 0),
+        BackgroundTransparency = 1,
+        Text = options.Label or "Slider",
+        TextColor3 = Pulse.Config.TextColor,
+        Font = Enum.Font.GothamMedium,
+        TextSize = 14,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        Parent = sliderFrame
+    })
+    
+    local valueLabel = Create("TextLabel", {
+        Name = "ValueLabel",
+        Size = UDim2.new(0, 40, 0, 20),
+        Position = UDim2.new(1, -40, 0, 0),
+        BackgroundTransparency = 1,
+        Text = tostring(options.Default or 50),
+        TextColor3 = Pulse.Config.AccentColor,
+        Font = Enum.Font.GothamBold,
+        TextSize = 14,
+        TextXAlignment = Enum.TextXAlignment.Right,
+        Parent = sliderFrame
+    })
+    
+    local sliderBar = Create("Frame", {
+        Name = "SliderBar",
+        Size = UDim2.new(1, 0, 0, 6),
+        Position = UDim2.new(0, 0, 1, -10),
+        BackgroundColor3 = Pulse.Config.SecondaryColor,
+        Parent = sliderFrame
+    })
+    
+    Roundify(sliderBar, 3)
+    AddStroke(sliderBar, Pulse.Colors.Stroke, 1)
+    
+    local sliderFill = Create("Frame", {
+        Name = "SliderFill",
+        Size = UDim2.new(0.5, 0, 1, 0),
+        BackgroundColor3 = Pulse.Config.AccentColor,
+        Parent = sliderBar
+    })
+    
+    Roundify(sliderFill, 3)
+    
+    local sliderHandle = Create("Frame", {
+        Name = "SliderHandle",
+        Size = UDim2.new(0, 16, 0, 16),
+        Position = UDim2.new(0.5, -8, 0.5, -8),
+        BackgroundColor3 = Color3.new(1, 1, 1),
+        Parent = sliderBar
+    })
+    
+    Roundify(sliderHandle, 8)
+    AddStroke(sliderHandle, Pulse.Config.AccentColor, 2)
+    
+    local currentValue = options.Default or 50
+    local minValue = options.Min or 0
+    local maxValue = options.Max or 100
+    
+    local function updateSlider(value)
+        currentValue = math.clamp(value, minValue, maxValue)
+        local percentage = (currentValue - minValue) / (maxValue - minValue)
+        
+        sliderFill.Size = UDim2.new(percentage, 0, 1, 0)
+        sliderHandle.Position = UDim2.new(percentage, -8, 0.5, -8)
+        valueLabel.Text = tostring(math.floor(currentValue))
+        
+        if options.OnChange then
+            options.OnChange(currentValue)
+        end
+    end
+    
+    local isDragging = false
+    
+    local function startDrag()
+        isDragging = true
+        
+        local connection
+        connection = RunService.Heartbeat:Connect(function()
+            if not isDragging then
+                connection:Disconnect()
+                return
+            end
+            
+            local mouse = UserInputService:GetMouseLocation()
+            local barPos = sliderBar.AbsolutePosition
+            local barSize = sliderBar.AbsoluteSize
+            
+            local relativeX = math.clamp((mouse.X - barPos.X) / barSize.X, 0, 1)
+            local value = minValue + relativeX * (maxValue - minValue)
+            
+            updateSlider(value)
+        end)
+        
+        local release
+        release = UserInputService.InputEnded:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                isDragging = false
+                connection:Disconnect()
+                release:Disconnect()
+            end
+        end)
+    end
+    
+    sliderBar.MouseButton1Down:Connect(startDrag)
+    sliderHandle.MouseButton1Down:Connect(startDrag)
+    
+    updateSlider(currentValue)
+    
+    local sliderObj = {
+        Frame = sliderFrame,
+        Value = currentValue,
+        SetValue = function(value)
+            updateSlider(value)
+        end
+    }
+    
+    return sliderObj
 end
 
 function Pulse:CreateDropdown(parent, options)
@@ -623,7 +982,10 @@ function Pulse:CreateDropdown(parent, options)
     
     updateDropdown()
     
+    local indicator = CreatePulseIndicator(dropdownFrame, UDim2.new(0.5, 0, 1, -2))
+    
     dropdownFrame.MouseButton1Click:Connect(function()
+        PlayPulseAnimation(indicator)
         toggleDropdown()
     end)
     
@@ -645,100 +1007,6 @@ function Pulse:CreateDropdown(parent, options)
     }
     
     return dropdownObj
-end
-
-function Pulse:CreateToggle(parent, options)
-    options = options or {}
-    
-    local toggleFrame = Create("Frame", {
-        Name = options.Name or "PulseToggle",
-        Size = options.Size or UDim2.new(0, 120, 0, 40),
-        Position = options.Position or UDim2.new(0, 0, 0, 0),
-        BackgroundTransparency = 1,
-        Parent = parent
-    })
-    
-    local label = Create("TextLabel", {
-        Name = "Label",
-        Size = UDim2.new(0.6, 0, 1, 0),
-        Position = UDim2.new(0, 0, 0, 0),
-        BackgroundTransparency = 1,
-        Text = options.Label or "Toggle",
-        TextColor3 = Pulse.Config.TextColor,
-        Font = Enum.Font.GothamMedium,
-        TextSize = 14,
-        TextXAlignment = Enum.TextXAlignment.Left,
-        Parent = toggleFrame
-    })
-    
-    local toggleButton = Create("Frame", {
-        Name = "ToggleButton",
-        Size = UDim2.new(0, 50, 0, 25),
-        Position = UDim2.new(1, -50, 0.5, -12.5),
-        BackgroundColor3 = Pulse.Config.SecondaryColor,
-        Parent = toggleFrame
-    })
-    
-    Roundify(toggleButton, 12.5)
-    AddStroke(toggleButton, Pulse.Colors.Stroke, 1)
-    
-    local toggleKnob = Create("Frame", {
-        Name = "ToggleKnob",
-        Size = UDim2.new(0, 21, 0, 21),
-        Position = UDim2.new(0, 2, 0.5, -10.5),
-        BackgroundColor3 = Color3.new(1, 1, 1),
-        Parent = toggleButton
-    })
-    
-    Roundify(toggleKnob, 10.5)
-    
-    local isToggled = options.Default or false
-    
-    local function updateToggle()
-        if isToggled then
-            TweenService:Create(toggleButton, TweenInfo.new(0.2), {
-                BackgroundColor3 = Pulse.Config.AccentColor
-            }):Play()
-            
-            TweenService:Create(toggleKnob, TweenInfo.new(0.2), {
-                Position = UDim2.new(1, -23, 0.5, -10.5)
-            }):Play()
-        else
-            TweenService:Create(toggleButton, TweenInfo.new(0.2), {
-                BackgroundColor3 = Pulse.Config.SecondaryColor
-            }):Play()
-            
-            TweenService:Create(toggleKnob, TweenInfo.new(0.2), {
-                Position = UDim2.new(0, 2, 0.5, -10.5)
-            }):Play()
-        end
-    end
-    
-    toggleButton.MouseButton1Click:Connect(function()
-        isToggled = not isToggled
-        updateToggle()
-        
-        if options.OnToggle then
-            options.OnToggle(isToggled)
-        end
-    end)
-    
-    updateToggle()
-    
-    local toggleObj = {
-        Frame = toggleFrame,
-        IsToggled = isToggled,
-        SetState = function(state)
-            isToggled = state
-            updateToggle()
-        end,
-        Toggle = function()
-            isToggled = not isToggled
-            updateToggle()
-        end
-    }
-    
-    return toggleObj
 end
 
 function Pulse:CreateColorPicker(parent, options)
@@ -930,7 +1198,7 @@ function Pulse:CreateColorPicker(parent, options)
         Parent = bSlider
     })
     
-    local function updateColor(hue, r, g, b)
+    local function updateColor(r, g, b)
         currentColor = Color3.fromRGB(r, g, b)
         
         TweenService:Create(previewColor, TweenInfo.new(0.2), {
@@ -945,60 +1213,6 @@ function Pulse:CreateColorPicker(parent, options)
             options.OnColorChange(currentColor)
         end
     end
-    
-    local function updateFromHue(huePos)
-        local hue = huePos
-        local r, g, b = 255, 0, 0
-        
-        if hue < 0.17 then
-            r = 255
-            g = math.floor(hue * 6 * 255)
-            b = 0
-        elseif hue < 0.33 then
-            r = math.floor((0.33 - hue) * 6 * 255)
-            g = 255
-            b = 0
-        elseif hue < 0.5 then
-            r = 0
-            g = 255
-            b = math.floor((hue - 0.33) * 6 * 255)
-        elseif hue < 0.67 then
-            r = 0
-            g = math.floor((0.67 - hue) * 6 * 255)
-            b = 255
-        elseif hue < 0.83 then
-            r = math.floor((hue - 0.67) * 6 * 255)
-            g = 0
-            b = 255
-        else
-            r = 255
-            g = 0
-            b = math.floor((1 - hue) * 6 * 255)
-        end
-        
-        updateColor(hue, r, g, b)
-    end
-    
-    hueSlider.MouseButton1Down:Connect(function()
-        local connection
-        connection = RunService.Heartbeat:Connect(function()
-            local mouse = UserInputService:GetMouseLocation()
-            local sliderPos = hueSlider.AbsolutePosition
-            local sliderSize = hueSlider.AbsoluteSize
-            
-            local relativeX = math.clamp((mouse.X - sliderPos.X) / sliderSize.X, 0, 1)
-            hueHandle.Position = UDim2.new(relativeX, -4, 0, -2)
-            updateFromHue(relativeX)
-        end)
-        
-        local release
-        release = UserInputService.InputEnded:Connect(function(input)
-            if input.UserInputType == Enum.UserInputType.MouseButton1 then
-                connection:Disconnect()
-                release:Disconnect()
-            end
-        end)
-    end)
     
     local function setupSlider(slider, handle, valueLabel, colorComponent, updateFunc)
         slider.MouseButton1Down:Connect(function()
@@ -1026,21 +1240,44 @@ function Pulse:CreateColorPicker(parent, options)
     end
     
     setupSlider(rSlider, rHandle, rValue, "R", function(value)
-        currentColor = Color3.fromRGB(value, math.floor(currentColor.G * 255), math.floor(currentColor.B * 255))
-        previewColor.BackgroundColor3 = currentColor
-        if options.OnColorChange then options.OnColorChange(currentColor) end
+        updateColor(value, math.floor(currentColor.G * 255), math.floor(currentColor.B * 255))
     end)
     
     setupSlider(gSlider, gHandle, gValue, "G", function(value)
-        currentColor = Color3.fromRGB(math.floor(currentColor.R * 255), value, math.floor(currentColor.B * 255))
-        previewColor.BackgroundColor3 = currentColor
-        if options.OnColorChange then options.OnColorChange(currentColor) end
+        updateColor(math.floor(currentColor.R * 255), value, math.floor(currentColor.B * 255))
     end)
     
     setupSlider(bSlider, bHandle, bValue, "B", function(value)
-        currentColor = Color3.fromRGB(math.floor(currentColor.R * 255), math.floor(currentColor.G * 255), value)
-        previewColor.BackgroundColor3 = currentColor
-        if options.OnColorChange then options.OnColorChange(currentColor) end
+        updateColor(math.floor(currentColor.R * 255), math.floor(currentColor.G * 255), value)
+    end)
+    
+    hueSlider.MouseButton1Down:Connect(function()
+        local connection
+        connection = RunService.Heartbeat:Connect(function()
+            local mouse = UserInputService:GetMouseLocation()
+            local sliderPos = hueSlider.AbsolutePosition
+            local sliderSize = hueSlider.AbsoluteSize
+            
+            local relativeX = math.clamp((mouse.X - sliderPos.X) / sliderSize.X, 0, 1)
+            hueHandle.Position = UDim2.new(relativeX, -4, 0, -2)
+            
+            -- 使用正确的HSV到RGB转换
+            local hue = relativeX
+            local rgbColor = hsvToRgb(hue, 1, 1)
+            updateColor(
+                math.floor(rgbColor.R * 255),
+                math.floor(rgbColor.G * 255),
+                math.floor(rgbColor.B * 255)
+            )
+        end)
+        
+        local release
+        release = UserInputService.InputEnded:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 then
+                connection:Disconnect()
+                release:Disconnect()
+            end
+        end)
     end)
     
     local colorPickerObj = {
@@ -1059,6 +1296,233 @@ function Pulse:CreateColorPicker(parent, options)
     }
     
     return colorPickerObj
+end
+
+function Pulse:CreateTabSystem(parent, options)
+    options = options or {}
+    
+    local tabSystemFrame = Create("Frame", {
+        Name = "TabSystem",
+        Size = UDim2.new(1, 0, 1, 0),
+        BackgroundTransparency = 1,
+        Parent = parent
+    })
+    
+    local tabButtonsFrame = Create("Frame", {
+        Name = "TabButtons",
+        Size = UDim2.new(0, 160, 1, 0),
+        BackgroundTransparency = 1,
+        Parent = tabSystemFrame
+    })
+    
+    local tabContentFrame = Create("Frame", {
+        Name = "TabContent",
+        Size = UDim2.new(1, -170, 1, 0),
+        Position = UDim2.new(0, 170, 0, 0),
+        BackgroundTransparency = 1,
+        Parent = tabSystemFrame
+    })
+    
+    local tabs = options.Tabs or {}
+    local currentTab = nil
+    
+    local function showTab(tabName)
+        if currentTab then
+            currentTab.Content.Visible = false
+            TweenService:Create(currentTab.Button, TweenInfo.new(0.2), {
+                BackgroundTransparency = 0.8
+            }):Play()
+        end
+        
+        for _, tab in pairs(tabs) do
+            if tab.Name == tabName then
+                currentTab = tab
+                tab.Content.Visible = true
+                TweenService:Create(tab.Button, TweenInfo.new(0.2), {
+                    BackgroundTransparency = 0.2
+                }):Play()
+                break
+            end
+        end
+    end
+    
+    local tabSystemObj = {
+        Frame = tabSystemFrame,
+        TabButtons = tabButtonsFrame,
+        TabContent = tabContentFrame,
+        Tabs = tabs,
+        AddTab = function(options)
+            local tabOptions = options or {}
+            local tabName = tabOptions.Name or "New Tab"
+            
+            -- 创建标签按钮
+            local tabButton = Create("TextButton", {
+                Name = tabName .. "TabButton",
+                Size = UDim2.new(1, -10, 0, 45),
+                Position = UDim2.new(0, 5, 0, #tabs * 50),
+                BackgroundColor3 = Pulse.Config.SecondaryColor,
+                BackgroundTransparency = 0.8,
+                Text = tabName,
+                TextColor3 = Pulse.Config.TextColor,
+                Font = Enum.Font.GothamMedium,
+                TextSize = 14,
+                AutoButtonColor = false,
+                Parent = tabButtonsFrame
+            })
+            
+            Roundify(tabButton, 8)
+            
+            if tabOptions.Icon then
+                tabButton.Text = "   " .. tabButton.Text
+                local icon = Create("ImageLabel", {
+                    Size = UDim2.new(0, 20, 0, 20),
+                    Position = UDim2.new(0, 10, 0.5, -10),
+                    BackgroundTransparency = 1,
+                    Image = Pulse:GetLucideIcon(tabOptions.Icon) or "rbxassetid://10723392055",
+                    ImageColor3 = Pulse.Config.TextColor,
+                    Parent = tabButton
+                })
+            end
+            
+            local indicator = CreatePulseIndicator(tabButton, UDim2.new(0.5, 0, 1, -2))
+            
+            -- 创建标签内容
+            local tabContent = Create("Frame", {
+                Name = tabName .. "Content",
+                Size = UDim2.new(1, 0, 1, 0),
+                BackgroundTransparency = 1,
+                Visible = false,
+                Parent = tabContentFrame
+            })
+            
+            tabButton.MouseButton1Click:Connect(function()
+                PlayPulseAnimation(indicator)
+                showTab(tabName)
+            end)
+            
+            local tabObj = {
+                Name = tabName,
+                Button = tabButton,
+                Content = tabContent,
+                Show = function()
+                    showTab(tabName)
+                end
+            }
+            
+            table.insert(tabs, tabObj)
+            
+            -- 如果是第一个标签，设置为当前标签
+            if #tabs == 1 then
+                showTab(tabName)
+            end
+            
+            return tabObj
+        end,
+        ShowTab = function(tabName)
+            showTab(tabName)
+        end
+    }
+    
+    return tabSystemObj
+end
+
+function Pulse:CreateLabel(parent, options)
+    options = options or {}
+    
+    local labelFrame = Create("TextLabel", {
+        Name = options.Name or "PulseLabel",
+        Size = options.Size or UDim2.new(0, 200, 0, 30),
+        Position = options.Position or UDim2.new(0, 0, 0, 0),
+        BackgroundTransparency = 1,
+        Text = options.Text or "Label",
+        TextColor3 = options.TextColor or Pulse.Config.TextColor,
+        Font = options.Font or Enum.Font.Gotham,
+        TextSize = options.TextSize or 14,
+        TextXAlignment = options.Alignment or Enum.TextXAlignment.Left,
+        Parent = parent
+    })
+    
+    local labelObj = {
+        Frame = labelFrame,
+        SetText = function(text)
+            labelFrame.Text = text
+        end,
+        SetColor = function(color)
+            labelFrame.TextColor3 = color
+        end
+    }
+    
+    return labelObj
+end
+
+function Pulse:CreateTextBox(parent, options)
+    options = options or {}
+    
+    local textBoxFrame = Create("Frame", {
+        Name = options.Name or "PulseTextBox",
+        Size = options.Size or UDim2.new(0, 200, 0, 40),
+        Position = options.Position or UDim2.new(0, 0, 0, 0),
+        BackgroundColor3 = Pulse.Config.SecondaryColor,
+        BackgroundTransparency = 0.1,
+        Parent = parent
+    })
+    
+    Roundify(textBoxFrame, 8)
+    AddStroke(textBoxFrame, Pulse.Colors.Stroke, 1)
+    
+    local textBox = Create("TextBox", {
+        Name = "TextBox",
+        Size = UDim2.new(1, -20, 1, 0),
+        Position = UDim2.new(0, 10, 0, 0),
+        BackgroundTransparency = 1,
+        Text = options.Placeholder or "",
+        PlaceholderText = options.Placeholder or "Enter text...",
+        TextColor3 = Pulse.Config.TextColor,
+        PlaceholderColor3 = Pulse.Config.SubTextColor,
+        Font = Enum.Font.Gotham,
+        TextSize = 14,
+        TextXAlignment = Enum.TextXAlignment.Left,
+        ClearTextOnFocus = options.ClearTextOnFocus or false,
+        Parent = textBoxFrame
+    })
+    
+    if options.DefaultText then
+        textBox.Text = options.DefaultText
+    end
+    
+    local indicator = CreatePulseIndicator(textBoxFrame, UDim2.new(0.5, 0, 1, -2))
+    
+    textBox.Focused:Connect(function()
+        PlayPulseAnimation(indicator)
+        TweenService:Create(textBoxFrame, TweenInfo.new(0.2), {
+            BackgroundColor3 = Pulse.Config.AccentColor,
+            BackgroundTransparency = 0.2
+        }):Play()
+    end)
+    
+    textBox.FocusLost:Connect(function()
+        TweenService:Create(textBoxFrame, TweenInfo.new(0.2), {
+            BackgroundColor3 = Pulse.Config.SecondaryColor,
+            BackgroundTransparency = 0.1
+        }):Play()
+        
+        if options.OnTextChange then
+            options.OnTextChange(textBox.Text)
+        end
+    end)
+    
+    local textBoxObj = {
+        Frame = textBoxFrame,
+        TextBox = textBox,
+        GetText = function()
+            return textBox.Text
+        end,
+        SetText = function(text)
+            textBox.Text = text
+        end
+    }
+    
+    return textBoxObj
 end
 
 function Pulse:CreateWindow(options)
@@ -1142,6 +1606,79 @@ function Pulse:CreateWindow(options)
         Parent = titleBar
     })
     
+    local closeButton = Create("TextButton", {
+        Name = "CloseButton",
+        Size = UDim2.new(0, 30, 0, 30),
+        Position = UDim2.new(1, -40, 0.5, -15),
+        BackgroundColor3 = Pulse.Colors.Red,
+        BackgroundTransparency = 0.8,
+        Text = "",
+        Parent = titleBar
+    })
+    
+    Roundify(closeButton, 15)
+    AddStroke(closeButton, Pulse.Colors.Red, 1)
+    
+    local closeIcon = Create("ImageLabel", {
+        Size = UDim2.new(0, 20, 0, 20),
+        Position = UDim2.new(0.5, -10, 0.5, -10),
+        BackgroundTransparency = 1,
+        Image = Pulse:GetLucideIcon("x") or "rbxassetid://10723392055",
+        ImageColor3 = Color3.new(1, 1, 1),
+        Parent = closeButton
+    })
+    
+    closeButton.MouseButton1Click:Connect(function()
+        TweenService:Create(MainFrame, TweenInfo.new(0.3), {
+            BackgroundTransparency = 1,
+            Size = UDim2.new(0, 0, 0, 0)
+        }):Play()
+        
+        task.wait(0.3)
+        MainFrame.Visible = false
+        MainFrame.Size = UDim2.new(0, Pulse.Config.WindowSize.X, 0, Pulse.Config.WindowSize.Y)
+    end)
+    
+    local minimizeButton = Create("TextButton", {
+        Name = "MinimizeButton",
+        Size = UDim2.new(0, 30, 0, 30),
+        Position = UDim2.new(1, -80, 0.5, -15),
+        BackgroundColor3 = Pulse.Colors.Warning,
+        BackgroundTransparency = 0.8,
+        Text = "",
+        Parent = titleBar
+    })
+    
+    Roundify(minimizeButton, 15)
+    AddStroke(minimizeButton, Pulse.Colors.Warning, 1)
+    
+    local minimizeIcon = Create("ImageLabel", {
+        Size = UDim2.new(0, 20, 0, 20),
+        Position = UDim2.new(0.5, -10, 0.5, -10),
+        BackgroundTransparency = 1,
+        Image = Pulse:GetLucideIcon("minimize") or "rbxassetid://10723392055",
+        ImageColor3 = Color3.new(1, 1, 1),
+        Parent = minimizeButton
+    })
+    
+    local isMinimized = false
+    
+    minimizeButton.MouseButton1Click:Connect(function()
+        isMinimized = not isMinimized
+        
+        if isMinimized then
+            TweenService:Create(MainFrame, TweenInfo.new(0.3), {
+                Size = UDim2.new(0, Pulse.Config.WindowSize.X, 0, 65)
+            }):Play()
+            minimizeIcon.Image = Pulse:GetLucideIcon("maximize") or "rbxassetid://10723392055"
+        else
+            TweenService:Create(MainFrame, TweenInfo.new(0.3), {
+                Size = UDim2.new(0, Pulse.Config.WindowSize.X, 0, Pulse.Config.WindowSize.Y)
+            }):Play()
+            minimizeIcon.Image = Pulse:GetLucideIcon("minimize") or "rbxassetid://10723392055"
+        end
+    end)
+    
     local contentArea = Create("Frame", {
         Name = "ContentArea",
         BackgroundTransparency = 1,
@@ -1150,39 +1687,58 @@ function Pulse:CreateWindow(options)
         Parent = MainFrame
     })
     
-    local tabSidebar = Create("Frame", {
-        Name = "TabSidebar",
-        BackgroundColor3 = Pulse.Config.MainColor,
-        Size = UDim2.new(0, 160, 1, 0),
-        Position = UDim2.new(0, 0, 0, 0),
-        Parent = contentArea
-    })
-    
-    Roundify(tabSidebar, 10)
-    AddStroke(tabSidebar, Pulse.Colors.Stroke, 1)
-    
-    local mainContent = Create("Frame", {
-        Name = "MainContent",
-        BackgroundTransparency = 1,
-        Size = UDim2.new(1, -170, 1, 0),
-        Position = UDim2.new(0, 170, 0, 0),
-        Parent = contentArea
-    })
-    
     local Window = {
         MainFrame = MainFrame,
         ScreenGui = ScreenGui,
         TitleBar = titleBar,
         ContentArea = contentArea,
-        TabSidebar = tabSidebar,
-        MainContent = mainContent
+        Title = titleLabel,
+        Subtitle = subtitleLabel,
+        Close = function()
+            TweenService:Create(MainFrame, TweenInfo.new(0.3), {
+                BackgroundTransparency = 1,
+                Size = UDim2.new(0, 0, 0, 0)
+            }):Play()
+            task.wait(0.3)
+            MainFrame.Visible = false
+        end,
+        Show = function()
+            MainFrame.Visible = true
+            MainFrame.BackgroundTransparency = 1
+            MainFrame.Size = UDim2.new(0, 0, 0, 0)
+            
+            TweenService:Create(MainFrame, TweenInfo.new(0.5, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+                BackgroundTransparency = Pulse.Config.TransparencyLevel,
+                Size = UDim2.new(0, Pulse.Config.WindowSize.X, 0, Pulse.Config.WindowSize.Y)
+            }):Play()
+        end,
+        Hide = function()
+            TweenService:Create(MainFrame, TweenInfo.new(0.3), {
+                BackgroundTransparency = 1,
+                Size = UDim2.new(0, 0, 0, 0)
+            }):Play()
+            task.wait(0.3)
+            MainFrame.Visible = false
+        end,
+        Toggle = function()
+            if MainFrame.Visible then
+                Window:Hide()
+            else
+                Window:Show()
+            end
+        end,
+        Minimize = function()
+            minimizeButton.MouseButton1Click:Fire()
+        end
     }
+    
+    table.insert(Pulse.Windows, Window)
     
     if Pulse.Config.AutoShow then
         task.wait(0.3)
         self:PulseNotify({
             Title = "Pulse UI Activated",
-            Content = "Interface loaded successfully",
+            Content = "Interface loaded successfully. Press RightControl to toggle.",
             Type = "success",
             Duration = 3
         })
@@ -1191,205 +1747,395 @@ function Pulse:CreateWindow(options)
     return Window
 end
 
-function Pulse:CreateTutorial(window)
-    local tutorialSteps = {
-        {
-            title = "Welcome to Pulse UI",
-            content = "This tutorial will guide you through all features",
-            target = window.TitleBar,
-            position = "top"
-        },
-        {
-            title = "Lucide Icons",
-            content = "All icons are from Lucide icon set",
-            target = window.TabSidebar,
-            position = "left"
-        },
-        {
-            title = "Interactive Components",
-            content = "Try clicking on the interactive elements",
-            target = window.MainContent,
-            position = "right"
-        }
+function Pulse:CreateExampleUI()
+    local window = self:CreateWindow({
+        Title = "Pulse UI Demo",
+        SubTitle = "Complete UI Component Showcase"
+    })
+    
+    local tabSystem = self:CreateTabSystem(window.ContentArea)
+    
+    -- Tab 1: Controls
+    local controlsTab = tabSystem:AddTab({
+        Name = "Controls",
+        Icon = "settings"
+    })
+    
+    -- 创建容器用于滚动
+    local controlsContainer = Create("ScrollingFrame", {
+        Name = "ControlsContainer",
+        Size = UDim2.new(1, 0, 1, 0),
+        BackgroundTransparency = 1,
+        ScrollBarThickness = 5,
+        CanvasSize = UDim2.new(0, 0, 0, 800),
+        Parent = controlsTab.Content
+    })
+    
+    local layout = Create("UIListLayout", {
+        SortOrder = Enum.SortOrder.LayoutOrder,
+        Padding = UDim.new(0, 15),
+        Parent = controlsContainer
+    })
+    
+    -- Buttons Section
+    local buttonsLabel = self:CreateLabel(controlsContainer, {
+        Text = "Buttons",
+        TextSize = 18,
+        Font = Enum.Font.GothamBold,
+        Size = UDim2.new(1, 0, 0, 30)
+    })
+    
+    local buttonRow1 = Create("Frame", {
+        Size = UDim2.new(1, 0, 0, 50),
+        BackgroundTransparency = 1,
+        LayoutOrder = 1,
+        Parent = controlsContainer
+    })
+    
+    local button1 = self:CreateButton(buttonRow1, {
+        Position = UDim2.new(0, 0, 0, 0),
+        Text = "Primary Button",
+        Icon = "zap",
+        OnClick = function()
+            self:PulseNotify({
+                Title = "Button Clicked",
+                Content = "Primary button was clicked!",
+                Type = "success"
+            })
+        end
+    })
+    
+    local button2 = self:CreateButton(buttonRow1, {
+        Position = UDim2.new(0, 160, 0, 0),
+        Text = "Secondary",
+        Icon = "star",
+        OnClick = function()
+            button2:SetColor(Pulse.Colors.Green)
+        end
+    })
+    
+    local button3 = self:CreateButton(buttonRow1, {
+        Position = UDim2.new(0, 320, 0, 0),
+        Text = "Warning",
+        Icon = "alertTriangle",
+        OnClick = function()
+            button3:SetColor(Pulse.Colors.Warning)
+        end
+    })
+    
+    -- Toggles Section
+    local togglesLabel = self:CreateLabel(controlsContainer, {
+        Text = "Toggle Switches",
+        TextSize = 18,
+        Font = Enum.Font.GothamBold,
+        Size = UDim2.new(1, 0, 0, 30),
+        LayoutOrder = 2
+    })
+    
+    local toggle1 = self:CreateToggle(controlsContainer, {
+        Position = UDim2.new(0, 0, 0, 0),
+        Label = "Enable Feature",
+        Default = true,
+        LayoutOrder = 3,
+        OnToggle = function(state)
+            self:PulseNotify({
+                Title = "Toggle State",
+                Content = "Feature is " .. (state and "enabled" or "disabled"),
+                Type = "info"
+            })
+        end
+    })
+    
+    local toggle2 = self:CreateToggle(controlsContainer, {
+        Position = UDim2.new(0, 200, 0, 0),
+        Label = "Dark Mode",
+        Default = false,
+        LayoutOrder = 4,
+        OnToggle = function(state)
+            self:PulseNotify({
+                Title = "Theme Changed",
+                Content = "Dark mode " .. (state and "enabled" or "disabled"),
+                Type = "info"
+            })
+        end
+    })
+    
+    -- Sliders Section
+    local slidersLabel = self:CreateLabel(controlsContainer, {
+        Text = "Sliders",
+        TextSize = 18,
+        Font = Enum.Font.GothamBold,
+        Size = UDim2.new(1, 0, 0, 30),
+        LayoutOrder = 5
+    })
+    
+    local slider1 = self:CreateSlider(controlsContainer, {
+        Position = UDim2.new(0, 0, 0, 0),
+        Label = "Volume Level",
+        Default = 75,
+        Min = 0,
+        Max = 100,
+        LayoutOrder = 6,
+        OnChange = function(value)
+            -- Volume change logic
+        end
+    })
+    
+    local slider2 = self:CreateSlider(controlsContainer, {
+        Position = UDim2.new(0, 0, 0, 0),
+        Label = "Brightness",
+        Default = 50,
+        Min = 0,
+        Max = 100,
+        LayoutOrder = 7,
+        OnChange = function(value)
+            -- Brightness change logic
+        end
+    })
+    
+    -- Dropdowns Section
+    local dropdownsLabel = self:CreateLabel(controlsContainer, {
+        Text = "Dropdowns",
+        TextSize = 18,
+        Font = Enum.Font.GothamBold,
+        Size = UDim2.new(1, 0, 0, 30),
+        LayoutOrder = 8
+    })
+    
+    local dropdownRow = Create("Frame", {
+        Size = UDim2.new(1, 0, 0, 50),
+        BackgroundTransparency = 1,
+        LayoutOrder = 9,
+        Parent = controlsContainer
+    })
+    
+    local dropdown1 = self:CreateDropdown(dropdownRow, {
+        Position = UDim2.new(0, 0, 0, 0),
+        Label = "Select Option",
+        Items = {"Option 1", "Option 2", "Option 3", "Option 4", "Option 5"},
+        OnSelect = function(item, index)
+            self:PulseNotify({
+                Title = "Dropdown Selected",
+                Content = "Selected: " .. item,
+                Type = "info"
+            })
+        end
+    })
+    
+    local dropdown2 = self:CreateDropdown(dropdownRow, {
+        Position = UDim2.new(0, 190, 0, 0),
+        Label = "Theme Color",
+        Items = {"Blue", "Red", "Green", "Purple", "Orange"},
+        OnSelect = function(item, index)
+            self:PulseNotify({
+                Title = "Theme Changed",
+                Content = "Changed to " .. item .. " theme",
+                Type = "success"
+            })
+        end
+    })
+    
+    -- Text Input Section
+    local textInputLabel = self:CreateLabel(controlsContainer, {
+        Text = "Text Input",
+        TextSize = 18,
+        Font = Enum.Font.GothamBold,
+        Size = UDim2.new(1, 0, 0, 30),
+        LayoutOrder = 10
+    })
+    
+    local textBox1 = self:CreateTextBox(controlsContainer, {
+        Position = UDim2.new(0, 0, 0, 0),
+        Size = UDim2.new(0.5, -10, 0, 40),
+        Placeholder = "Enter your name...",
+        LayoutOrder = 11,
+        OnTextChange = function(text)
+            -- Text change logic
+        end
+    })
+    
+    -- Color Picker Section
+    local colorPickerLabel = self:CreateLabel(controlsContainer, {
+        Text = "Color Picker",
+        TextSize = 18,
+        Font = Enum.Font.GothamBold,
+        Size = UDim2.new(1, 0, 0, 30),
+        LayoutOrder = 12
+    })
+    
+    local colorPicker = self:CreateColorPicker(controlsContainer, {
+        Position = UDim2.new(0, 0, 0, 0),
+        LayoutOrder = 13,
+        OnColorChange = function(color)
+            self:PulseNotify({
+                Title = "Color Selected",
+                Content = "RGB: " .. math.floor(color.R * 255) .. ", " .. math.floor(color.G * 255) .. ", " .. math.floor(color.B * 255),
+                Type = "info"
+            })
+        end
+    })
+    
+    -- Tab 2: Info
+    local infoTab = tabSystem:AddTab({
+        Name = "Information",
+        Icon = "info"
+    })
+    
+    local infoContainer = Create("ScrollingFrame", {
+        Size = UDim2.new(1, 0, 1, 0),
+        BackgroundTransparency = 1,
+        ScrollBarThickness = 5,
+        CanvasSize = UDim2.new(0, 0, 0, 400),
+        Parent = infoTab.Content
+    })
+    
+    local infoLayout = Create("UIListLayout", {
+        SortOrder = Enum.SortOrder.LayoutOrder,
+        Padding = UDim.new(0, 20),
+        Parent = infoContainer
+    })
+    
+    local welcomeLabel = self:CreateLabel(infoContainer, {
+        Text = "Welcome to Pulse UI",
+        TextSize = 24,
+        Font = Enum.Font.GothamBold,
+        Size = UDim2.new(1, 0, 0, 40),
+        Alignment = Enum.TextXAlignment.Center
+    })
+    
+    local description = self:CreateLabel(infoContainer, {
+        Text = "A modern, customizable UI library for Roblox with Lucide icons, glow effects, and smooth animations.",
+        TextSize = 14,
+        Font = Enum.Font.Gotham,
+        Size = UDim2.new(1, -40, 0, 60),
+        Position = UDim2.new(0, 20, 0, 0),
+        TextColor3 = Pulse.Config.SubTextColor
+    })
+    
+    local featuresLabel = self:CreateLabel(infoContainer, {
+        Text = "Features:",
+        TextSize = 18,
+        Font = Enum.Font.GothamBold,
+        Size = UDim2.new(1, 0, 0, 30)
+    })
+    
+    local features = {
+        "• Modern, sleek design",
+        "• Lucide icons integration",
+        "• Glow effects and animations",
+        "• Pulse indicators for interaction",
+        "• Color picker with HSV support",
+        "• Tab system for organization",
+        "• Notification system",
+        "• Tooltips with dual language support",
+        "• Customizable themes and colors"
     }
     
-    local currentStep = 1
-    local tutorialFrame = Create("Frame", {
-        Name = "TutorialOverlay",
-        Size = UDim2.new(1, 0, 1, 0),
-        BackgroundColor3 = Color3.fromRGB(0, 0, 0),
-        BackgroundTransparency = 0.7,
-        ZIndex = 9998,
-        Visible = false,
-        Parent = window.ScreenGui
-    })
-    
-    local highlightFrame = Create("Frame", {
-        Name = "TutorialHighlight",
-        BackgroundTransparency = 1,
-        BorderColor3 = Pulse.Config.AccentColor,
-        BorderSizePixel = 3,
-        ZIndex = 9999,
-        Parent = tutorialFrame
-    })
-    
-    Roundify(highlightFrame, 8)
-    
-    local tutorialBox = Create("Frame", {
-        Name = "TutorialBox",
-        Size = UDim2.new(0, 300, 0, 180),
-        BackgroundColor3 = Pulse.Config.MainColor,
-        BackgroundTransparency = Pulse.Config.TransparencyLevel,
-        ZIndex = 10000,
-        Parent = tutorialFrame
-    })
-    
-    Roundify(tutorialBox, 12)
-    AddStroke(tutorialBox, Pulse.Config.AccentColor, 2)
-    
-    local tutorialGlow = CreateGlowEffect(tutorialBox, Pulse.Config.AccentColor, 0.5)
-    
-    local titleLabel = Create("TextLabel", {
-        Name = "TutorialTitle",
-        Size = UDim2.new(1, -40, 0, 40),
-        Position = UDim2.new(0, 20, 0, 20),
-        BackgroundTransparency = 1,
-        Text = "",
-        TextColor3 = Pulse.Config.TextColor,
-        Font = Enum.Font.GothamBold,
-        TextSize = 18,
-        TextXAlignment = Enum.TextXAlignment.Left,
-        Parent = tutorialBox
-    })
-    
-    local contentLabel = Create("TextLabel", {
-        Name = "TutorialContent",
-        Size = UDim2.new(1, -40, 0, 80),
-        Position = UDim2.new(0, 20, 0, 70),
-        BackgroundTransparency = 1,
-        Text = "",
-        TextColor3 = Pulse.Config.SubTextColor,
-        Font = Pulse.Config.Font,
-        TextSize = 14,
-        TextXAlignment = Enum.TextXAlignment.Left,
-        TextYAlignment = Enum.TextYAlignment.Top,
-        Parent = tutorialBox
-    })
-    
-    local prevButton = Create("TextButton", {
-        Name = "PrevButton",
-        Size = UDim2.new(0, 100, 0, 35),
-        Position = UDim2.new(0, 20, 1, -45),
-        BackgroundColor3 = Pulse.Config.SecondaryColor,
-        BackgroundTransparency = 0.2,
-        Text = "Previous",
-        TextColor3 = Pulse.Config.TextColor,
-        Font = Enum.Font.Gotham,
-        TextSize = 13,
-        Parent = tutorialBox
-    })
-    
-    Roundify(prevButton, 6)
-    
-    local nextButton = Create("TextButton", {
-        Name = "NextButton",
-        Size = UDim2.new(0, 100, 0, 35),
-        Position = UDim2.new(1, -120, 1, -45),
-        BackgroundColor3 = Pulse.Config.AccentColor,
-        BackgroundTransparency = 0.2,
-        Text = "Next",
-        TextColor3 = Color3.new(1, 1, 1),
-        Font = Enum.Font.GothamBold,
-        TextSize = 13,
-        Parent = tutorialBox
-    })
-    
-    Roundify(nextButton, 6)
-    
-    local stepIndicator = Create("TextLabel", {
-        Name = "StepIndicator",
-        Size = UDim2.new(1, -40, 0, 20),
-        Position = UDim2.new(0, 20, 1, -70),
-        BackgroundTransparency = 1,
-        Text = "",
-        TextColor3 = Pulse.Config.SubTextColor,
-        Font = Enum.Font.Gotham,
-        TextSize = 11,
-        Parent = tutorialBox
-    })
-    
-    local function showStep(stepIndex)
-        if stepIndex < 1 or stepIndex > #tutorialSteps then
-            tutorialFrame.Visible = false
-            return
-        end
-        
-        local step = tutorialSteps[stepIndex]
-        currentStep = stepIndex
-        
-        titleLabel.Text = step.title
-        contentLabel.Text = step.content
-        stepIndicator.Text = "Step " .. stepIndex .. " of " .. #tutorialSteps
-        
-        if step.target then
-            local targetPos = step.target.AbsolutePosition
-            local targetSize = step.target.AbsoluteSize
-            
-            highlightFrame.Position = UDim2.new(0, targetPos.X, 0, targetPos.Y)
-            highlightFrame.Size = UDim2.new(0, targetSize.X, 0, targetSize.Y)
-            
-            local tutorialPos
-            if step.position == "top" then
-                tutorialPos = UDim2.new(0, targetPos.X + targetSize.X/2 - 150, 0, targetPos.Y - 200)
-            elseif step.position == "bottom" then
-                tutorialPos = UDim2.new(0, targetPos.X + targetSize.X/2 - 150, 0, targetPos.Y + targetSize.Y + 20)
-            elseif step.position == "left" then
-                tutorialPos = UDim2.new(0, targetPos.X - 320, 0, targetPos.Y + targetSize.Y/2 - 90)
-            else
-                tutorialPos = UDim2.new(0, targetPos.X + targetSize.X + 20, 0, targetPos.Y + targetSize.Y/2 - 90)
-            end
-            
-            tutorialBox.Position = tutorialPos
-        end
-        
-        prevButton.Visible = stepIndex > 1
-        nextButton.Text = stepIndex == #tutorialSteps and "Finish" or "Next"
-        
-        tutorialFrame.Visible = true
+    for i, feature in ipairs(features) do
+        self:CreateLabel(infoContainer, {
+            Text = feature,
+            TextSize = 13,
+            Font = Enum.Font.Gotham,
+            Size = UDim2.new(1, -20, 0, 25),
+            Position = UDim2.new(0, 20, 0, 0),
+            TextColor3 = Pulse.Config.SubTextColor
+        })
     end
     
-    prevButton.MouseButton1Click:Connect(function()
-        showStep(currentStep - 1)
+    -- Tab 3: Settings
+    local settingsTab = tabSystem:AddTab({
+        Name = "Settings",
+        Icon = "settings"
+    })
+    
+    local settingsContainer = Create("ScrollingFrame", {
+        Size = UDim2.new(1, 0, 1, 0),
+        BackgroundTransparency = 1,
+        ScrollBarThickness = 5,
+        CanvasSize = UDim2.new(0, 0, 0, 300),
+        Parent = settingsTab.Content
+    })
+    
+    local settingsLayout = Create("UIListLayout", {
+        SortOrder = Enum.SortOrder.LayoutOrder,
+        Padding = UDim.new(0, 15),
+        Parent = settingsContainer
+    })
+    
+    local settingsLabel = self:CreateLabel(settingsContainer, {
+        Text = "UI Settings",
+        TextSize = 20,
+        Font = Enum.Font.GothamBold,
+        Size = UDim2.new(1, 0, 0, 40),
+        Alignment = Enum.TextXAlignment.Center
+    })
+    
+    local setting1 = self:CreateToggle(settingsContainer, {
+        Label = "Enable Glow Effects",
+        Default = Pulse.Config.GlowEffect,
+        OnToggle = function(state)
+            Pulse.Config.GlowEffect = state
+            self:PulseNotify({
+                Title = "Glow Effects",
+                Content = state and "Enabled" or "Disabled",
+                Type = "info"
+            })
+        end
+    })
+    
+    local setting2 = self:CreateToggle(settingsContainer, {
+        Label = "Show Pulse Indicators",
+        Default = Pulse.Config.ShowInteractiveIndicators,
+        OnToggle = function(state)
+            Pulse.Config.ShowInteractiveIndicators = state
+            self:PulseNotify({
+                Title = "Pulse Indicators",
+                Content = state and "Enabled" or "Disabled",
+                Type = "info"
+            })
+        end
+    })
+    
+    local setting3 = self:CreateToggle(settingsContainer, {
+        Label = "Enable Click Animations",
+        Default = Pulse.Config.ShowClickAnimation,
+        OnToggle = function(state)
+            Pulse.Config.ShowClickAnimation = state
+            self:PulseNotify({
+                Title = "Click Animations",
+                Content = state and "Enabled" or "Disabled",
+                Type = "info"
+            })
+        end
+    })
+    
+    local setting4 = self:CreateToggle(settingsContainer, {
+        Label = "Use Lucide Icons",
+        Default = Pulse.Config.EnableLucide,
+        OnToggle = function(state)
+            Pulse.Config.EnableLucide = state
+            self:PulseNotify({
+                Title = "Lucide Icons",
+                Content = state and "Enabled" or "Disabled",
+                Type = "info"
+            })
+        end
+    })
+    
+    -- Apply custom styles
+    layout.Changed:Connect(function()
+        controlsContainer.CanvasSize = UDim2.new(0, 0, 0, layout.AbsoluteContentSize.Y + 20)
     end)
     
-    nextButton.MouseButton1Click:Connect(function()
-        if currentStep == #tutorialSteps then
-            tutorialFrame.Visible = false
-        else
-            showStep(currentStep + 1)
-        end
+    infoLayout.Changed:Connect(function()
+        infoContainer.CanvasSize = UDim2.new(0, 0, 0, infoLayout.AbsoluteContentSize.Y + 20)
     end)
     
-    local tutorialObj = {
-        Start = function()
-            showStep(1)
-        end,
-        Next = function()
-            showStep(currentStep + 1)
-        end,
-        Previous = function()
-            showStep(currentStep - 1)
-        end,
-        ShowStep = function(step)
-            showStep(step)
-        end,
-        End = function()
-            tutorialFrame.Visible = false
-        end
-    }
+    settingsLayout.Changed:Connect(function()
+        settingsContainer.CanvasSize = UDim2.new(0, 0, 0, settingsLayout.AbsoluteContentSize.Y + 20)
+    end)
     
-    Pulse.CurrentTutorial = tutorialObj
-    return tutorialObj
+    return window
 end
 
 function Pulse:Cleanup()
@@ -1436,7 +2182,7 @@ local function SetupKeybinds()
         if input.KeyCode == Pulse.Config.ToggleKey then
             for _, window in pairs(Pulse.Windows) do
                 if window and window.MainFrame then
-                    window.MainFrame.Visible = not window.MainFrame.Visible
+                    window:Toggle()
                 end
             end
         end
@@ -1444,16 +2190,7 @@ local function SetupKeybinds()
         if input.KeyCode == Pulse.Config.MinimizeKey then
             for _, window in pairs(Pulse.Windows) do
                 if window and window.MainFrame then
-                    local isVisible = window.MainFrame.Visible
-                    if isVisible then
-                        TweenService:Create(window.MainFrame, TweenInfo.new(0.3), {
-                            Size = UDim2.new(0, Pulse.Config.WindowSize.X, 0, 65)
-                        }):Play()
-                    else
-                        TweenService:Create(window.MainFrame, TweenInfo.new(0.3), {
-                            Size = UDim2.new(0, Pulse.Config.WindowSize.X, 0, Pulse.Config.WindowSize.Y)
-                        }):Play()
-                    end
+                    window:Minimize()
                 end
             end
         end
